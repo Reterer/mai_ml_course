@@ -64,8 +64,21 @@ class LinearRegression:
             Возвращает экземпляр класса с обученными весами.
 
         """
-        # TODO: реализовать подбор весов для x и y
-        raise NotImplementedError('Функция fit класса LinearRegression не реализована')
+        self.loss_history.append(self.calc_loss(x, y))
+
+        for iter in range(self.max_iter):
+            w_diff = self.descent.step(x, y)
+            self.loss_history.append(self.calc_loss(x, y))
+
+            if np.linalg.norm(w_diff) < self.tolerance:
+                print(f"iter: {iter} разница между шагами меньше tolerance: {np.linalg.norm(w_diff)} < {self.tolerance}")
+                return self
+            elif np.isnan(self.descent.w).any():
+                print(f"iter: {iter} появился NaN в векторе весов: {self.w}")
+                return self
+
+        print(f"достигнуто максимальное число итераций")
+        return self
 
     def predict(self, x: np.ndarray) -> np.ndarray:
         """

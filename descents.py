@@ -28,6 +28,7 @@ class LearningRate:
     __call__()
         Вычисляет скорость обучения на текущей итерации.
     """
+
     lambda_: float = 1e-3
     s0: float = 1
     p: float = 0.5
@@ -62,6 +63,7 @@ class LossFunction(Enum):
     Huber : auto
         Функция потерь Хьюбера.
     """
+
     MSE = auto()
     MAE = auto()
     LogCosh = auto()
@@ -199,7 +201,14 @@ class BaseDescent:
         float
             Значение функции потерь.
         """
-        raise NotImplementedError('BaseDescent calc_loss function not implemented')
+        y_pred = self.predict(x)
+        if self.loss_function == LossFunction.MSE:
+            return np.mean((y - y_pred) ** 2)
+        else:
+            # По хорошему вычисления ошибки и градиента в таком случае надо выносить в сущность функции
+            # Тем самым скрывая её реализацию под интерфейсом
+            # Но в реальных библиотеках дифферинцирование выводится автоматически, на сколько я знаю
+            raise NotImplementedError(f"BaseDescent calc_loss function not implemented for loss {self.LossFunction}")
 
     def predict(self, x: np.ndarray) -> np.ndarray:
         """
@@ -215,7 +224,7 @@ class BaseDescent:
         np.ndarray
             Прогнозируемые значения.
         """
-        raise NotImplementedError('BaseDescent predict function not implemented')
+        return x @ self.w
 
 
 class VanillaGradientDescent(BaseDescent):
@@ -229,6 +238,9 @@ class VanillaGradientDescent(BaseDescent):
     calc_gradient(x: np.ndarray, y: np.ndarray) -> np.ndarray
         Вычисление градиента функции потерь по весам.
     """
+
+    def __init__(self, dimension: int, lambda_: float = 1e-3, loss_function: LossFunction = LossFunction.MSE):
+        super().__init__(dimension, lambda_, loss_function)
 
     def update_weights(self, gradient: np.ndarray) -> np.ndarray:
         """
@@ -244,7 +256,11 @@ class VanillaGradientDescent(BaseDescent):
         np.ndarray
             Разность весов (w_{k + 1} - w_k).
         """
-        raise NotImplementedError('VanillaGradientDescent update_weights function not implemented')
+
+        step = -self.lr() * gradient
+        self.w += step
+
+        return step
 
     def calc_gradient(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
         """
@@ -262,7 +278,10 @@ class VanillaGradientDescent(BaseDescent):
         np.ndarray
             Градиент функции потерь по весам.
         """
-        raise NotImplementedError('VanillaGradientDescent calc_gradient function not implemented')
+        if self.loss_function == LossFunction.MSE:
+            return 2 / x.shape[0] * x.T @ (x @ self.w - y)
+        else:
+            raise NotImplementedError(f"VanillaGradientDescent calc_gradient function not implemented for {self.LossFunction}")
 
 
 class StochasticDescent(VanillaGradientDescent):
@@ -285,9 +304,7 @@ class StochasticDescent(VanillaGradientDescent):
         Вычисление градиента функции потерь по мини-пакетам.
     """
 
-    def __init__(self, dimension: int, lambda_: float = 1e-3, batch_size: int = 50,
-                 loss_function: LossFunction = LossFunction.MSE):
-
+    def __init__(self, dimension: int, lambda_: float = 1e-3, batch_size: int = 50, loss_function: LossFunction = LossFunction.MSE):
         super().__init__(dimension, lambda_, loss_function)
         self.batch_size = batch_size
 
@@ -307,7 +324,14 @@ class StochasticDescent(VanillaGradientDescent):
         np.ndarray
             Градиент функции потерь по весам, вычисленный по мини-пакету.
         """
-        raise NotImplementedError('StochasticDescent calc_gradient function not implemented')
+        indexes = np.random.randint(0, x.shape[0], self.batch_size)
+        x_s = x[indexes]
+        y_s = y[indexes]
+
+        if self.loss_function == LossFunction.MSE:
+            return 2 / x_s.shape[0] * x_s.T @ (x_s @ self.w - y_s)
+        else:
+            raise NotImplementedError(f"StochasticDescent calc_gradient function not implemented for {self.LossFunction}")
 
 
 class MomentumDescent(VanillaGradientDescent):
@@ -368,8 +392,9 @@ class MomentumDescent(VanillaGradientDescent):
         np.ndarray
             Разность весов (w_{k + 1} - w_k).
         """
-        # TODO: implement updating weights function
-        raise NotImplementedError('MomentumDescent update_weights function not implemented')
+        self.h = self.alpha * self.h + self.lr() * gradient
+        self.w -= self.h
+        return -self.h
 
 
 class Adam(VanillaGradientDescent):
@@ -444,7 +469,18 @@ class Adam(VanillaGradientDescent):
         np.ndarray
             Разность весов (w_{k + 1} - w_k).
         """
-        raise NotImplementedError('Adagrad update_weights function not implemented')
+        self.iteration += 1
+
+        self.m = self.beta_1 * self.m + (1 - self.beta_1) * gradient
+        self.v = self.beta_2 * self.v + (1 - self.beta_2) * gradient**2
+
+        m_corr = self.m / (1 - self.beta_1**self.iteration)
+        v_corr = self.v / (1 - self.beta_2**self.iteration)
+
+        step = self.lr() * m_corr / ((v_corr**0.5) + self.eps)
+        self.w -= step
+
+        return -step
 
 
 class BaseDescentReg(BaseDescent):
@@ -495,7 +531,7 @@ class BaseDescentReg(BaseDescent):
         np.ndarray
             Градиент функции потерь с учетом L2 регуляризации по весам.
         """
-        l2_gradient: np.ndarray = np.zeros_like(x.shape[1])  
+        l2_gradient: np.ndarray = np.zeros_like(x.shape[1])
 
         return super().calc_gradient(x, y) + l2_gradient * self.mu
 
@@ -557,19 +593,19 @@ def get_descent(descent_config: dict) -> BaseDescent:
     >>> isinstance(descent, BaseDescent)
     True
     """
-    descent_name = descent_config.get('descent_name', 'full')
-    regularized = descent_config.get('regularized', False)
+    descent_name = descent_config.get("descent_name", "full")
+    regularized = descent_config.get("regularized", False)
 
     descent_mapping: Dict[str, Type[BaseDescent]] = {
-        'full': VanillaGradientDescent if not regularized else VanillaGradientDescentReg,
-        'stochastic': StochasticDescent if not regularized else StochasticDescentReg,
-        'momentum': MomentumDescent if not regularized else MomentumDescentReg,
-        'adam': Adam if not regularized else AdamReg
+        "full": VanillaGradientDescent if not regularized else VanillaGradientDescentReg,
+        "stochastic": StochasticDescent if not regularized else StochasticDescentReg,
+        "momentum": MomentumDescent if not regularized else MomentumDescentReg,
+        "adam": Adam if not regularized else AdamReg,
     }
 
     if descent_name not in descent_mapping:
-        raise ValueError(f'Incorrect descent name, use one of these: {descent_mapping.keys()}')
+        raise ValueError(f"Incorrect descent name, use one of these: {descent_mapping.keys()}")
 
     descent_class = descent_mapping[descent_name]
 
-    return descent_class(**descent_config.get('kwargs', {}))
+    return descent_class(**descent_config.get("kwargs", {}))

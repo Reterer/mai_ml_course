@@ -71,13 +71,13 @@ class LinearRegression:
             self.loss_history.append(self.calc_loss(x, y))
 
             if np.linalg.norm(w_diff) < self.tolerance:
-                print(f"iter: {iter} разница между шагами меньше tolerance: {np.linalg.norm(w_diff)} < {self.tolerance}")
+                # print(f"iter: {iter} разница между шагами меньше tolerance: {np.linalg.norm(w_diff)} < {self.tolerance}")
                 return self
             elif np.isnan(self.descent.w).any():
-                print(f"iter: {iter} появился NaN в векторе весов: {self.w}")
+                # print(f"iter: {iter} появился NaN в векторе весов: {self.w}")
                 return self
 
-        print(f"достигнуто максимальное число итераций")
+        # print(f"достигнуто максимальное число итераций")
         return self
 
     def predict(self, x: np.ndarray) -> np.ndarray:
